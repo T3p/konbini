@@ -5,6 +5,7 @@ Example:
 """
 
 import argparse
+from pathlib import Path
 
 import numpy as np
 
@@ -12,13 +13,14 @@ from konbini.envs.full_bandit import FullBandit
 from konbini.envs.multiplayer_mab import MultiplayerMab
 from konbini.envs.semi_bandit import SemiBandit
 from konbini.envs.win_win import WinWin
+from regret_plot import generate_reward_matrix, save_regret_plot
 
 
 # Change these values to customize runs without passing CLI arguments.
 DEFAULT_ENV = "full-bandit"
 DEFAULT_N_ARMS = 5
 DEFAULT_ACTION_SIZE = 2
-DEFAULT_HORIZON = 10
+DEFAULT_HORIZON = 20000
 DEFAULT_SEED = 0
 DEFAULT_WINNER = True
 
@@ -59,8 +61,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     reward_seed, policy_seed = np.random.SeedSequence(args.seed).spawn(2)
-    rewards = np.random.default_rng(reward_seed).random(
-        (args.horizon, args.n_arms)
+    rewards = generate_reward_matrix(
+        args.n_arms,
+        args.action_size,
+        args.horizon,
+        np.random.default_rng(reward_seed),
     )
 
     env_class = ENVIRONMENTS[args.env]
@@ -77,6 +82,7 @@ def main() -> None:
 
     observation, _ = env.reset(seed=args.seed)
     total_reward = 0.0
+    actions = []
 
     for timestep in range(1, args.horizon + 1):
         print(f"timestep {timestep}, rewards: ", end="")
@@ -89,6 +95,7 @@ def main() -> None:
         action[selected_arms] = 1
 
         observation, reward, terminated, truncated, info = env.step(action)
+        actions.append(action)
         total_reward += reward
         print(
             f"  selected={selected_arms.tolist()}, reward={reward:.4f}, "
@@ -99,8 +106,20 @@ def main() -> None:
         if terminated or truncated:
             break
 
+    actions = np.asarray(actions)
+    played_rewards = rewards[:len(actions)]
+    plot_path = Path(__file__).with_name("random_policy_regret.png")
+    best_subset = save_regret_plot(
+        played_rewards,
+        {"Random policy": actions},
+        args.action_size,
+        plot_path,
+        "Random policy regret",
+    )
     env.close()
+    print(f"best fixed action in hindsight: {list(best_subset)}")
     print(f"total reward: {total_reward:.4f}")
+    print(f"regret plot: {plot_path}")
 
 
 if __name__ == "__main__":

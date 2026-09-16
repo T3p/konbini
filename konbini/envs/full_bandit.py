@@ -18,7 +18,7 @@ class FullBandit(gym.Env):
             raise ValueError("Invalid number of arms")
         self.n_arms = n_arms
 
-        if not 1 <= action_size < n_arms:
+        if not 1 <= action_size <= n_arms:
             raise ValueError("Invalid action size")
         self.action_size = action_size
 
