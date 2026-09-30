@@ -10,10 +10,11 @@ from pathlib import Path
 import numpy as np
 
 from konbini.envs.full_bandit import FullBandit
+from konbini.envs.instances import stationary_good_arms
 from konbini.envs.multiplayer_mab import MultiplayerMab
 from konbini.envs.semi_bandit import SemiBandit
 from konbini.envs.win_win import WinWin
-from regret_plot import generate_reward_matrix, save_regret_plot
+from regret_plot import save_regret_plot
 
 
 # Change these values to customize runs without passing CLI arguments.
@@ -61,11 +62,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     reward_seed, policy_seed = np.random.SeedSequence(args.seed).spawn(2)
-    rewards = generate_reward_matrix(
+    rewards = stationary_good_arms(
         args.n_arms,
         args.action_size,
         args.horizon,
-        np.random.default_rng(reward_seed),
+        seed=int(reward_seed.generate_state(1)[0]),
     )
 
     env_class = ENVIRONMENTS[args.env]
@@ -108,7 +109,8 @@ def main() -> None:
 
     actions = np.asarray(actions)
     played_rewards = rewards[:len(actions)]
-    plot_path = Path(__file__).with_name("random_policy_regret.png")
+    plot_path = Path(__file__).parent / "results" / "random_policy_regret.png"
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
     best_subset = save_regret_plot(
         played_rewards,
         {"Random policy": actions},

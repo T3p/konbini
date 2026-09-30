@@ -6,12 +6,27 @@ from konbini.algorithms.osma import (
     _dependent_round,
     _estimate_losses,
     _project,
+    default_learning_rate,
     osma,
 )
 from konbini.envs.semi_bandit import SemiBandit
 
 
 class TestOSMA(unittest.TestCase):
+    def test_default_learning_rate_and_none_are_equivalent(self):
+        rewards = np.tile(np.array([0.8, 0.6, 0.3, 0.1]), (20, 1))
+        expected = np.sqrt(2 * 2 * np.log(4 * 2) / (4 * 20))
+        self.assertAlmostEqual(default_learning_rate(4, 2, 20), expected)
+
+        default_result = osma(SemiBandit(4, 2, rewards), None, seed=7)
+        explicit_result = osma(
+            SemiBandit(4, 2, rewards), expected, seed=7
+        )
+        for key in default_result:
+            np.testing.assert_array_equal(
+                default_result[key], explicit_result[key]
+            )
+
     def test_sampled_actions_are_feasible(self):
         rng = np.random.default_rng(4)
         marginals = np.array([0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.4])
@@ -35,6 +50,26 @@ class TestOSMA(unittest.TestCase):
         log_weights = np.array(
             [-800.0, -20.0, -4.0, -1.0, 0.0, 3.0, 7.0, 25.0, 500.0]
         )
+        projected = _project(log_weights, 4)
+
+        self.assertTrue(np.all(projected >= 0.0))
+        self.assertTrue(np.all(projected <= 1.0))
+        self.assertAlmostEqual(projected.sum(), 4.0, places=12)
+
+    def test_kl_projection_does_not_overshoot_a_nearly_capped_coordinate(self):
+        log_weights = np.array([
+            -3.489658225625257,
+            -6.372294012325019,
+            -0.0018410410944995682,
+            -5.833010287894091,
+            -4.613571532901332,
+            -1.3275756513689694,
+            -9.983873720305232,
+            0.0,
+            -0.0061217981057057605,
+            -0.3599489195596695,
+        ])
+
         projected = _project(log_weights, 4)
 
         self.assertTrue(np.all(projected >= 0.0))

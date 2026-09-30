@@ -5,17 +5,37 @@ from __future__ import annotations
 import numpy as np
 
 
-def osma(environment, learning_rate: float, seed: int | None = None) -> dict:
+def default_learning_rate(
+    n_arms: int, action_size: int, horizon: int
+) -> float:
+    """Return ``sqrt(2 * m * log(K * m) / (K * T))``."""
+    if horizon < 1:
+        raise ValueError("horizon must be positive")
+    return np.sqrt(
+        2 * action_size * np.log(n_arms * action_size)
+        / (n_arms * horizon)
+    )
+
+
+def osma(
+    environment,
+    learning_rate: float | None = None,
+    seed: int | None = None,
+) -> dict:
     """Run negative-entropy OSMD for one semi-bandit episode.
 
     The returned dictionary contains the sampled ``actions`` and scalar
     ``rewards``.
     """
+    n_arms = environment.n_arms
+    action_size = environment.action_size
+    if learning_rate is None:
+        learning_rate = default_learning_rate(
+            n_arms, action_size, environment.horizon
+        )
     if not np.isfinite(learning_rate) or learning_rate <= 0:
         raise ValueError("learning_rate must be finite and positive")
 
-    n_arms = environment.n_arms
-    action_size = environment.action_size
     rng = np.random.default_rng(seed)
     marginals = np.full(n_arms, action_size / n_arms, dtype=float)
 
@@ -176,12 +196,6 @@ def _project(log_weights: np.ndarray, action_size: int) -> np.ndarray:
         np.minimum(0.0, shifted - (lower + upper) / 2.0)
     )
     projected = np.maximum(projected, np.nextafter(0.0, 1.0))
-    residual = action_size - float(projected.sum())
-    if residual:
-        adjustable = np.flatnonzero(
-            projected < 1.0 if residual > 0 else projected > 0.0
-        )
-        projected[adjustable[np.argmax(projected[adjustable])]] += residual
 
     if (np.any(projected < 0.0) or np.any(projected > 1.0)
             or not np.isclose(projected.sum(), action_size, atol=1e-12)):

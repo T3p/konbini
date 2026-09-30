@@ -1,8 +1,23 @@
 from gymnasium.envs.registration import register
 from .full_bandit import FullBandit
+from .instances import (
+    corrupted_stationary_good_arms,
+    geometric_blocks,
+    stationary_good_arms,
+)
 from .semi_bandit import SemiBandit
 from .multiplayer_mab import MultiplayerMab
 from .win_win import WinWin
+
+__all__ = [
+    "FullBandit",
+    "corrupted_stationary_good_arms",
+    "geometric_blocks",
+    "MultiplayerMab",
+    "SemiBandit",
+    "WinWin",
+    "stationary_good_arms",
+]
 
 register(
     id='FullBandit-v0',

@@ -1,0 +1,146 @@
+"""Reward-matrix factories for reusable bandit instances."""
+
+from __future__ import annotations
+
+from math import comb
+
+import numpy as np
+
+DEFAULT_N_BLOCKS = 4
+
+
+def _validate_parameters(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    advantage: float,
+) -> None:
+    if n_arms < 2 or not 1 <= action_size < n_arms:
+        raise ValueError("action_size must be between 1 and n_arms - 1")
+    if horizon < 1:
+        raise ValueError("horizon must be positive")
+    if not 0.0 < advantage < 1.0:
+        raise ValueError("advantage must lie in (0, 1)")
+
+
+def stationary_good_arms(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    seed: int | None = None,
+    advantage: float = 0.1,
+) -> np.ndarray:
+    """Return an instance with a fixed advantage for ``action_size`` arms."""
+    _validate_parameters(n_arms, action_size, horizon, advantage)
+
+    rng = np.random.default_rng(seed)
+    rewards = rng.uniform(0.0, 1.0 - advantage, (horizon, n_arms))
+    good_arms = rng.choice(n_arms, size=action_size, replace=False)
+    rewards[:, good_arms] = np.clip(
+        rewards[:, good_arms] + advantage, 0.0, 1.0
+    )
+    return rewards
+
+
+def corrupted_stationary_good_arms(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    seed: int | None = None,
+    advantage: float = 0.2,
+    corruption_probability: float = 0.1,
+) -> np.ndarray:
+    """Return a stationary instance with randomly corrupted decoy rounds.
+
+    A fixed decoy subset, distinct from the good subset, receives reward one
+    on each independently corrupted round.
+    """
+    _validate_parameters(n_arms, action_size, horizon, advantage)
+    if (not np.isfinite(corruption_probability)
+            or not 0.0 <= corruption_probability <= 1.0):
+        raise ValueError("corruption_probability must lie in [0, 1]")
+
+    rng = np.random.default_rng(seed)
+    good_arms = tuple(
+        sorted(rng.choice(n_arms, size=action_size, replace=False))
+    )
+    while True:
+        decoy_arms = tuple(
+            sorted(rng.choice(n_arms, size=action_size, replace=False))
+        )
+        if decoy_arms != good_arms:
+            break
+
+    rewards = rng.uniform(0.0, 1.0 - advantage, (horizon, n_arms))
+    rewards[:, good_arms] = np.clip(
+        rewards[:, good_arms] + advantage, 0.0, 1.0
+    )
+    corrupted = rng.random(horizon) < corruption_probability
+    rewards[np.ix_(corrupted, decoy_arms)] = 1.0
+    return rewards
+
+
+def geometric_blocks(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    seed: int | None = None,
+    advantage: float = 0.1,
+    n_blocks: int = DEFAULT_N_BLOCKS,
+) -> np.ndarray:
+    """Return rewards whose good arms change over geometric blocks.
+
+    Block lengths are proportional to ``1, 2, 4, ...`` and sum exactly to
+    ``horizon``. Every block uses a distinct random set of good arms.
+    """
+    _validate_parameters(n_arms, action_size, horizon, advantage)
+    if not 1 <= n_blocks <= horizon:
+        raise ValueError("n_blocks must be between 1 and horizon")
+    if n_blocks > comb(n_arms, action_size):
+        raise ValueError("n_blocks exceeds the number of distinct subsets")
+
+    rng = np.random.default_rng(seed)
+    rewards = rng.uniform(0.0, 1.0 - advantage, (horizon, n_arms))
+    used_subsets: set[tuple[int, ...]] = set()
+    start = 0
+
+    for block_size in _geometric_block_sizes(horizon, n_blocks):
+        while True:
+            good_arms = tuple(
+                sorted(rng.choice(n_arms, size=action_size, replace=False))
+            )
+            if good_arms not in used_subsets:
+                used_subsets.add(good_arms)
+                break
+
+        stop = start + block_size
+        rewards[start:stop, good_arms] = np.clip(
+            rewards[start:stop, good_arms] + advantage, 0.0, 1.0
+        )
+        start = stop
+
+    return rewards
+
+
+def _geometric_block_sizes(horizon: int, n_blocks: int) -> np.ndarray:
+    weights = np.exp2(np.arange(n_blocks, dtype=float))
+    exact_sizes = horizon * weights / weights.sum()
+    sizes = np.maximum(np.floor(exact_sizes).astype(int), 1)
+
+    while sizes.sum() > horizon:
+        largest = int(np.argmax(np.where(sizes > 1, sizes, -1)))
+        sizes[largest] -= 1
+
+    remainder = horizon - int(sizes.sum())
+    if remainder:
+        fractions = exact_sizes - np.floor(exact_sizes)
+        order = np.argsort(-fractions, kind="stable")
+        sizes[order[:remainder]] += 1
+    return sizes
+
+
+__all__ = [
+    "corrupted_stationary_good_arms",
+    "geometric_blocks",
+    "stationary_good_arms",
+]

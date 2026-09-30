@@ -7,6 +7,28 @@ import numpy as np
 from .osma import _dependent_round, _estimate_losses, _project
 
 
+def default_learning_rate(
+    n_arms: int, action_size: int, horizon: int
+) -> float:
+    """Return the theory-based OSMA-W learning rate."""
+    if horizon < 1:
+        raise ValueError("horizon must be positive")
+    return min(
+        np.sqrt(
+            action_size * np.log(n_arms / action_size)
+            / (2 * n_arms * horizon)
+        ),
+        (3 - np.e) / n_arms,
+    )
+
+
+def default_exploration_coefficient(
+    n_arms: int, action_size: int, horizon: int
+) -> float:
+    """Return the default uniform-mixture coefficient ``K * eta``."""
+    return n_arms * default_learning_rate(n_arms, action_size, horizon)
+
+
 def recover_base_arm_rewards(
     observed_reward_sum: float,
     winner: int,
@@ -20,19 +42,27 @@ def recover_base_arm_rewards(
 
 def osmaw(
     environment,
-    learning_rate: float,
-    exploration_coefficient: float,
+    learning_rate: float | None = None,
+    exploration_coefficient: float | None = None,
     seed: int | None = None,
 ) -> dict:
     """Run negative-entropy OSMD for one full-bandit episode."""
+    n_arms = environment.n_arms
+    action_size = environment.action_size
+    if learning_rate is None:
+        learning_rate = default_learning_rate(
+            n_arms, action_size, environment.horizon
+        )
+    if exploration_coefficient is None:
+        exploration_coefficient = default_exploration_coefficient(
+            n_arms, action_size, environment.horizon
+        )
     if not np.isfinite(learning_rate) or learning_rate <= 0:
         raise ValueError("learning_rate must be finite and positive")
     if (not np.isfinite(exploration_coefficient)
             or not 0 < exploration_coefficient <= 1):
         raise ValueError("exploration_coefficient must lie in (0, 1]")
 
-    n_arms = environment.n_arms
-    action_size = environment.action_size
     rng = np.random.default_rng(seed)
     marginals = np.full(n_arms, action_size / n_arms, dtype=float)
 
