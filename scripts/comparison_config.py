@@ -19,9 +19,24 @@ PLOT_LABELS = {
 }
 INSTANCE_NAMES = (
     "stationary_good_arms",
+    "bernoulli",
+    "correlated",
     "corrupted_stationary_good_arms",
     "geometric_blocks",
 )
+PLOT_OUTPUT_STEMS = {
+    "bernoulli": "bernoulli",
+    "correlated_by_action_size": "action_size",
+    "correlated": "correlated",
+    "corrupted_stationary_good_arms_by_action_size": (
+        "action_size_corrupted"
+    ),
+    "corrupted_stationary_good_arms": "corrupted",
+    "geometric_blocks": "blocks",
+    "stationary_good_arms_by_action_size": "action_size_uniform",
+    "stationary_good_arms_full": "full",
+    "stationary_good_arms": "uniform",
+}
 
 
 def csv_path(output_dir: Path, instance: str, algorithm: str) -> Path:

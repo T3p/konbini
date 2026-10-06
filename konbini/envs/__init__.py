@@ -1,6 +1,8 @@
 from gymnasium.envs.registration import register
 from .full_bandit import FullBandit
 from .instances import (
+    bernoulli,
+    correlated,
     corrupted_stationary_good_arms,
     geometric_blocks,
     stationary_good_arms,
@@ -11,6 +13,8 @@ from .win_win import WinWin
 
 __all__ = [
     "FullBandit",
+    "bernoulli",
+    "correlated",
     "corrupted_stationary_good_arms",
     "geometric_blocks",
     "MultiplayerMab",

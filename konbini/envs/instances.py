@@ -7,6 +7,8 @@ from math import comb
 import numpy as np
 
 DEFAULT_N_BLOCKS = 4
+DEFAULT_CORRELATED_N_GOOD_ARMS = 8
+DEFAULT_BERNOULLI_N_GOOD_ARMS = 8
 
 
 def _validate_parameters(
@@ -40,6 +42,65 @@ def stationary_good_arms(
         rewards[:, good_arms] + advantage, 0.0, 1.0
     )
     return rewards
+
+
+def correlated(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    seed: int | None = None,
+    advantage: float = 0.1,
+    n_good_arms: int = DEFAULT_CORRELATED_N_GOOD_ARMS,
+) -> np.ndarray:
+    """Return Bernoulli arm rewards with shared uniform round noise.
+
+    Each reward is ``0.25 * B[t, i] + U[t]``, where the Bernoulli variables
+    are independent across rounds and arms, while ``U[t]`` is shared by all
+    arms in round ``t``. Exactly ``n_good_arms`` arms have an expected-reward
+    advantage equal to ``advantage``.
+    """
+    _validate_parameters(n_arms, action_size, horizon, advantage)
+    if not isinstance(n_good_arms, (int, np.integer)):
+        raise ValueError("n_good_arms must be an integer")
+    if not 1 <= n_good_arms < n_arms:
+        raise ValueError("n_good_arms must be between 1 and n_arms - 1")
+    if advantage > 3.0 / 16.0:
+        raise ValueError("advantage must be at most 3/16")
+
+    rng = np.random.default_rng(seed)
+    good_arms = rng.choice(n_arms, size=n_good_arms, replace=False)
+    probabilities = np.full(n_arms, 0.25)
+    probabilities[good_arms] += 4.0 * advantage
+    bernoulli_rewards = rng.random((horizon, n_arms)) < probabilities
+    shared_rewards = rng.uniform(0.25, 0.5, (horizon, 1))
+    return 0.25 * bernoulli_rewards + shared_rewards
+
+
+def bernoulli(
+    n_arms: int,
+    action_size: int,
+    horizon: int,
+    seed: int | None = None,
+    advantage: float = 0.1,
+    n_good_arms: int = DEFAULT_BERNOULLI_N_GOOD_ARMS,
+) -> np.ndarray:
+    """Return stationary Bernoulli rewards with random arm parameters.
+
+    Each arm starts with an independent parameter sampled uniformly from
+    ``[0, 1 - advantage]``. A random set of exactly ``n_good_arms`` arms then
+    receives ``advantage`` in addition to its sampled parameter.
+    """
+    _validate_parameters(n_arms, action_size, horizon, advantage)
+    if not isinstance(n_good_arms, (int, np.integer)):
+        raise ValueError("n_good_arms must be an integer")
+    if not 1 <= n_good_arms < n_arms:
+        raise ValueError("n_good_arms must be between 1 and n_arms - 1")
+
+    rng = np.random.default_rng(seed)
+    probabilities = rng.uniform(0.0, 1.0 - advantage, n_arms)
+    good_arms = rng.choice(n_arms, size=n_good_arms, replace=False)
+    probabilities[good_arms] += advantage
+    return (rng.random((horizon, n_arms)) < probabilities).astype(float)
 
 
 def corrupted_stationary_good_arms(
@@ -140,6 +201,10 @@ def _geometric_block_sizes(horizon: int, n_blocks: int) -> np.ndarray:
 
 
 __all__ = [
+    "DEFAULT_BERNOULLI_N_GOOD_ARMS",
+    "DEFAULT_CORRELATED_N_GOOD_ARMS",
+    "bernoulli",
+    "correlated",
     "corrupted_stationary_good_arms",
     "geometric_blocks",
     "stationary_good_arms",

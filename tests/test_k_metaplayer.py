@@ -79,6 +79,32 @@ class TestKMetaplayer(unittest.TestCase):
         )
         np.testing.assert_allclose(marginals, exact_marginals, atol=1e-14)
 
+    def test_marginals_clip_log_domain_roundoff_at_one(self):
+        log_weights = np.array(
+            [
+                -1117.99782601,
+                -1097.05917915,
+                -1096.85649479,
+                -1111.75308341,
+                -1101.31512406,
+                0.0,
+                -1096.08376954,
+                -1102.20449304,
+                -1096.27564398,
+                -1101.88567612,
+            ]
+        )
+        action_size = 4
+        prefix, suffix = _log_elementary_tables(log_weights, action_size)
+
+        marginals = _inclusion_marginals(
+            log_weights, action_size, prefix, suffix
+        )
+
+        self.assertTrue(np.all((marginals >= 0.0) & (marginals <= 1.0)))
+        self.assertAlmostEqual(marginals.sum(), action_size)
+        self.assertEqual(marginals[5], 1.0)
+
     def test_empirical_sampling_frequencies_match_marginals(self):
         log_weights = np.array([-0.7, 0.2, 1.0, -0.1, 0.5])
         action_size = 3

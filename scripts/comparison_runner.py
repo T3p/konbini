@@ -29,9 +29,6 @@ from regret_plot import (
     seed_column_names,
 )
 
-ACTION_SIZES = np.arange(2, 11)
-
-
 def build_parser(
     description: str,
     default_n_arms: int,
@@ -181,21 +178,31 @@ def run_action_size_experiment(
     instance: str,
     reward_factory: Callable[..., np.ndarray],
     args: argparse.Namespace,
+    action_sizes: tuple[int, ...],
+    n_arms: int,
     blockwise_n_blocks: int | None = None,
     independent_rewards: bool = False,
     output_stem: str | None = None,
 ) -> None:
-    """Compare final regret for action sizes 2 through 10."""
+    """Compare final regret across action sizes with a fixed arm count."""
+    if (
+        not action_sizes
+        or tuple(sorted(set(action_sizes))) != action_sizes
+        or any(not 1 <= size < n_arms for size in action_sizes)
+    ):
+        raise ValueError(
+            "action_sizes must be strictly increasing values between "
+            "1 and n_arms - 1"
+        )
     algorithm_seeds = tuple(args.seeds)
     final_regrets_by_label = {
-        label: np.empty((len(ACTION_SIZES), len(algorithm_seeds)))
+        label: np.empty((len(action_sizes), len(algorithm_seeds)))
         for label in ALGORITHM_LABELS
     }
     print(f"algorithm seeds: {list(algorithm_seeds)}")
 
-    for size_index, action_size in enumerate(ACTION_SIZES):
+    for size_index, action_size in enumerate(action_sizes):
         size = int(action_size)
-        n_arms = 2 * size
         block_sizes = (
             _geometric_block_sizes(args.horizon, blockwise_n_blocks)
             if blockwise_n_blocks is not None
@@ -227,7 +234,7 @@ def run_action_size_experiment(
                 else shared_best_subset
             )
             print(
-                f"{instance}, action size {size}/{ACTION_SIZES[-1]}, "
+                f"{instance}, action size {size}/{action_sizes[-1]}, "
                 f"arms {n_arms}: seed {seed} "
                 f"({run_index + 1}/{len(algorithm_seeds)})"
             )
@@ -262,7 +269,8 @@ def run_action_size_experiment(
             args.output_dir / f"{file_stem}_{CSV_FILENAMES[label]}"
         )
         _save_action_size_regret_csv(
-            ACTION_SIZES,
+            action_sizes,
+            n_arms,
             final_regrets,
             algorithm_seeds,
             output_path,
@@ -287,7 +295,7 @@ def run_action_size_experiment(
         values = ", ".join(
             f"m={size}: {mean:.4f}"
             for size, mean in zip(
-                ACTION_SIZES, final_regrets.mean(axis=1)
+                action_sizes, final_regrets.mean(axis=1)
             )
         )
         print(f"{label} mean final regret: {values}")
@@ -297,20 +305,24 @@ def run_action_size_experiment(
 
 
 def _save_action_size_regret_csv(
-    action_sizes: np.ndarray,
+    action_sizes: tuple[int, ...],
+    n_arms: int,
     final_regrets: np.ndarray,
     seeds: tuple[int, ...],
     output_path: Path,
 ) -> None:
-    rows = np.column_stack((action_sizes, final_regrets))
-    header = ",".join(("action_size", *seed_column_names(seeds)))
+    arm_counts = np.full(len(action_sizes), n_arms)
+    rows = np.column_stack((action_sizes, arm_counts, final_regrets))
+    header = ",".join(
+        ("action_size", "n_arms", *seed_column_names(seeds))
+    )
     np.savetxt(
         output_path,
         rows,
         delimiter=",",
         header=header,
         comments="",
-        fmt=["%d", *(["%.18g"] * len(seeds))],
+        fmt=["%d", "%d", *(["%.18g"] * len(seeds))],
     )
 
 

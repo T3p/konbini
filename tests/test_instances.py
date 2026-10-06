@@ -5,6 +5,8 @@ import numpy as np
 from konbini.envs.instances import (
     DEFAULT_N_BLOCKS,
     _geometric_block_sizes,
+    bernoulli,
+    correlated,
     corrupted_stationary_good_arms,
     geometric_blocks,
     stationary_good_arms,
@@ -12,6 +14,108 @@ from konbini.envs.instances import (
 
 
 class TestInstances(unittest.TestCase):
+    def test_bernoulli_is_seeded_binary_and_uses_random_parameters(self):
+        n_arms = 12
+        horizon = 100_000
+        advantage = 0.1
+        n_good_arms = 5
+        seed = 41
+        rewards = bernoulli(
+            n_arms,
+            2,
+            horizon,
+            seed=seed,
+            advantage=advantage,
+            n_good_arms=n_good_arms,
+        )
+        repeated = bernoulli(
+            n_arms,
+            2,
+            horizon,
+            seed=seed,
+            advantage=advantage,
+            n_good_arms=n_good_arms,
+        )
+
+        rng = np.random.default_rng(seed)
+        expected_parameters = rng.uniform(
+            0.0, 1.0 - advantage, n_arms
+        )
+        good_arms = rng.choice(
+            n_arms, size=n_good_arms, replace=False
+        )
+        expected_parameters[good_arms] += advantage
+
+        np.testing.assert_array_equal(rewards, repeated)
+        self.assertTrue(np.all((rewards == 0.0) | (rewards == 1.0)))
+        np.testing.assert_allclose(
+            rewards.mean(axis=0), expected_parameters, atol=0.01
+        )
+
+    def test_bernoulli_uses_same_instance_across_action_sizes(self):
+        small_action = bernoulli(
+            20, 2, 1_000, seed=43, n_good_arms=10
+        )
+        large_action = bernoulli(
+            20, 10, 1_000, seed=43, n_good_arms=10
+        )
+
+        np.testing.assert_array_equal(small_action, large_action)
+
+    def test_bernoulli_validates_good_arm_count(self):
+        with self.assertRaises(ValueError):
+            bernoulli(6, 2, 10, seed=0, n_good_arms=1.5)
+        with self.assertRaises(ValueError):
+            bernoulli(6, 2, 10, seed=0, n_good_arms=6)
+
+    def test_correlated_is_seeded_bounded_and_has_shared_round_noise(self):
+        rewards = correlated(16, 2, 10_000, seed=29)
+        repeated = correlated(16, 2, 10_000, seed=29)
+
+        np.testing.assert_array_equal(rewards, repeated)
+        self.assertTrue(np.all((rewards >= 0.25) & (rewards <= 0.75)))
+        row_ranges = np.ptp(rewards, axis=1)
+        self.assertTrue(
+            np.all(np.isclose(row_ranges, 0.0) | np.isclose(row_ranges, 0.25))
+        )
+
+    def test_correlated_has_requested_mean_advantage(self):
+        advantage = 0.1
+        action_size = 4
+        n_good_arms = 10
+        rewards = correlated(
+            20,
+            action_size,
+            100_000,
+            seed=31,
+            advantage=advantage,
+            n_good_arms=n_good_arms,
+        )
+        means = np.sort(rewards.mean(axis=0))
+
+        self.assertAlmostEqual(
+            means[-n_good_arms:].mean() - means[:-n_good_arms].mean(),
+            advantage,
+            delta=0.01,
+        )
+
+    def test_correlated_uses_same_instance_across_action_sizes(self):
+        small_action = correlated(20, 2, 1_000, seed=37, n_good_arms=10)
+        large_action = correlated(20, 10, 1_000, seed=37, n_good_arms=10)
+
+        np.testing.assert_array_equal(small_action, large_action)
+
+    def test_correlated_validates_bernoulli_probability(self):
+        correlated(
+            20, 2, 10, seed=0, advantage=3.0 / 16.0, n_good_arms=10
+        )
+        with self.assertRaises(ValueError):
+            correlated(
+                20, 2, 10, seed=0, advantage=0.19, n_good_arms=10
+            )
+        with self.assertRaises(ValueError):
+            correlated(20, 2, 10, seed=0, n_good_arms=20)
+
     def test_corrupted_stationary_good_arms(self):
         horizon = 20_000
         rewards = corrupted_stationary_good_arms(

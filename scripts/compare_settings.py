@@ -12,6 +12,8 @@ from comparison_runner import (
     run_experiment,
 )
 from konbini.envs.instances import (
+    bernoulli,
+    correlated,
     corrupted_stationary_good_arms,
     geometric_blocks,
     stationary_good_arms,
@@ -25,6 +27,13 @@ DEFAULT_ADVANTAGE = 0.1
 DEFAULT_CORRUPTION_PROBABILITY = 0.2
 DEFAULT_N_BLOCKS = 4
 
+# Action-size experiment defaults. Edit these values to change its setup.
+ACTION_SIZE_N_ARMS = 20
+ACTION_SIZES = tuple(range(2, 11))
+ACTION_SIZE_N_GOOD_ARMS = 10
+ACTION_SIZE_HORIZON = 20_000
+ACTION_SIZE_ALGORITHM_SEEDS = (58, 26, 36, 50, 23)
+
 STATIONARY_REWARD_SEED = 4594
 CORRUPTED_REWARD_SEED = 2385
 BLOCKING_REWARD_SEED = 3849
@@ -35,6 +44,16 @@ BLOCKING_ALGORITHM_SEEDS = (18, 76)
 def add_instance_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the shared reward-instance selection options."""
     instance_group = parser.add_mutually_exclusive_group()
+    instance_group.add_argument(
+        "--bernoulli",
+        action="store_true",
+        help="use Bernoulli rewards with random stationary arm parameters",
+    )
+    instance_group.add_argument(
+        "--correlated",
+        action="store_true",
+        help="use Bernoulli arm rewards with shared uniform round noise",
+    )
     instance_group.add_argument(
         "--corrupted",
         action="store_true",
@@ -64,7 +83,35 @@ def select_instance(
     int | None,
 ]:
     """Return the selected instance and its mode-specific defaults."""
-    if args.corrupted:
+    if args.bernoulli:
+        instance = "bernoulli"
+        reward_factory = partial(
+            bernoulli,
+            advantage=args.advantage,
+            **(
+                {"n_good_arms": ACTION_SIZE_N_GOOD_ARMS}
+                if args.m
+                else {}
+            ),
+        )
+        default_reward_seed = STATIONARY_REWARD_SEED
+        default_algorithm_seeds = STANDARD_ALGORITHM_SEEDS
+        blockwise_n_blocks = None
+    elif args.correlated:
+        instance = "correlated"
+        reward_factory = partial(
+            correlated,
+            advantage=args.advantage,
+            **(
+                {"n_good_arms": ACTION_SIZE_N_GOOD_ARMS}
+                if args.m
+                else {}
+            ),
+        )
+        default_reward_seed = STATIONARY_REWARD_SEED
+        default_algorithm_seeds = STANDARD_ALGORITHM_SEEDS
+        blockwise_n_blocks = None
+    elif args.corrupted:
         instance = "corrupted_stationary_good_arms"
         reward_factory = partial(
             corrupted_stationary_good_arms,
@@ -124,9 +171,8 @@ def main() -> None:
     parser.add_argument(
         "--m",
         action="store_true",
-        help=(
-            "compare action sizes 2 through 10 with twice as many arms"
-        ),
+        help=(f"compare action sizes {ACTION_SIZES[0]} through "
+              f"{ACTION_SIZES[-1]} with {ACTION_SIZE_N_ARMS} arms"),
     )
     args = parser.parse_args()
     (
@@ -138,7 +184,7 @@ def main() -> None:
     ) = select_instance(args)
 
     if args.horizon is None:
-        args.horizon = 10_000 if args.m else DEFAULT_HORIZON
+        args.horizon = ACTION_SIZE_HORIZON if args.m else DEFAULT_HORIZON
     if args.seed is None:
         args.seed = default_reward_seed
     if args.seeds is None:
@@ -146,7 +192,7 @@ def main() -> None:
             list(range(100, 200))
             if args.full
             else (
-                list(STANDARD_ALGORITHM_SEEDS[:5])
+                list(ACTION_SIZE_ALGORITHM_SEEDS)
                 if args.m
                 else list(default_algorithm_seeds)
             )
@@ -160,6 +206,8 @@ def main() -> None:
             instance,
             reward_factory,
             args,
+            action_sizes=ACTION_SIZES,
+            n_arms=ACTION_SIZE_N_ARMS,
             blockwise_n_blocks=blockwise_n_blocks,
             independent_rewards=args.full,
             output_stem=output_stem,

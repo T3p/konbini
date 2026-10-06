@@ -7,6 +7,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# Publication styles for figures occupying one or both article columns.
+SINGLE_COLUMN_FIGURE_SIZE = (3.4, 2.55)
+DOUBLE_COLUMN_FIGURE_SIZE = (7.0, 4.05)
+SINGLE_COLUMN_FONT_SIZES = (7, 6, 6)
+DOUBLE_COLUMN_FONT_SIZES = (17, 15, 14)
+SINGLE_COLUMN_MARKER_SIZE = 3
+DOUBLE_COLUMN_MARKER_SIZE = 7
+
+
 def save_regret_plot(
     rewards: np.ndarray,
     actions_by_label: dict[str, np.ndarray],
@@ -18,7 +27,8 @@ def save_regret_plot(
     best_subset = best_fixed_subset(rewards, action_size)
     benchmark_rewards = rewards[:, best_subset].sum(axis=1)
 
-    figure, axes = plt.subplots()
+    axis_font, tick_font, legend_font = SINGLE_COLUMN_FONT_SIZES
+    figure, axes = plt.subplots(figsize=SINGLE_COLUMN_FIGURE_SIZE)
     timesteps = np.arange(1, rewards.shape[0] + 1)
     for label, actions in actions_by_label.items():
         selected_rewards = np.sum(rewards * actions, axis=1)
@@ -27,10 +37,11 @@ def save_regret_plot(
         )
         axes.plot(timesteps, cumulative_regret, label=label)
     axes.axhline(0.0, color="black", linewidth=0.8)
-    axes.set_xlabel("Timestep")
-    axes.set_ylabel("Cumulative regret")
-    axes.set_title(title)
-    axes.legend()
+    axes.set_xlabel("Rounds", fontsize=axis_font)
+    axes.set_ylabel("Total regret", fontsize=axis_font)
+    axes.set_title(title, fontsize=axis_font)
+    axes.tick_params(labelsize=tick_font)
+    axes.legend(fontsize=legend_font)
     figure.tight_layout()
     figure.savefig(output_path)
     plt.close(figure)
@@ -167,11 +178,12 @@ def save_bootstrap_regret_plot(
     n_bootstrap: int = 2000,
     confidence_level: float = 0.95,
     bootstrap_seed: int = 0,
-    y_label: str = "Cumulative regret",
+    y_label: str = "Total regret",
     x_values: np.ndarray | None = None,
-    x_label: str = "Timestep",
+    x_label: str = "Rounds",
     show_all_x_ticks: bool = False,
     include_x_origin: bool = True,
+    double_column: bool = False,
 ) -> None:
     """Plot mean cumulative regret with pointwise bootstrap regions."""
     if not regrets_by_label:
@@ -185,7 +197,19 @@ def save_bootstrap_regret_plot(
         n_runs, n_bootstrap, np.random.default_rng(bootstrap_seed)
     )
 
-    figure, axes = plt.subplots()
+    if double_column:
+        figure_size = DOUBLE_COLUMN_FIGURE_SIZE
+        axis_font, tick_font, legend_font = DOUBLE_COLUMN_FONT_SIZES
+        marker_size = DOUBLE_COLUMN_MARKER_SIZE
+        marker_edge_width = 1.1
+        line_width = 1.7
+    else:
+        figure_size = SINGLE_COLUMN_FIGURE_SIZE
+        axis_font, tick_font, legend_font = SINGLE_COLUMN_FONT_SIZES
+        marker_size = SINGLE_COLUMN_MARKER_SIZE
+        marker_edge_width = 0.6
+        line_width = 0.9
+    figure, axes = plt.subplots(figsize=figure_size)
     markers = ("o", "s", "^", "D")
     marker_stride = max(1, int(np.ceil(n_points / 12)))
     y_min = np.inf
@@ -203,9 +227,10 @@ def save_bootstrap_regret_plot(
             label=label,
             marker=markers[plot_index % len(markers)],
             markevery=marker_stride,
-            markersize=7.5,
+            markersize=marker_size,
             markerfacecolor="white",
-            markeredgewidth=1,
+            markeredgewidth=marker_edge_width,
+            linewidth=line_width,
         )
         axes.fill_between(
             plot_x,
@@ -220,12 +245,19 @@ def save_bootstrap_regret_plot(
     axes.set_ylim(y_bottom, y_top)
     if show_all_x_ticks:
         axes.set_xticks(plot_x)
-    axes.set_xlabel(x_label)
-    axes.set_ylabel(y_label)
-    axes.legend()
+    axes.set_xlabel(x_label, fontsize=axis_font)
+    axes.set_ylabel(y_label, fontsize=axis_font)
+    axes.tick_params(labelsize=tick_font)
+    axes.legend(
+        fontsize=legend_font,
+        borderpad=0.3,
+        labelspacing=0.3,
+        handlelength=1.5,
+        handletextpad=0.5,
+    )
     figure.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(output_path)
+    figure.savefig(output_path, bbox_inches="tight", pad_inches=0.1)
     plt.close(figure)
 
 
@@ -236,12 +268,13 @@ def save_tikz_regret_plot(
     n_bootstrap: int = 2000,
     confidence_level: float = 0.95,
     bootstrap_seed: int = 0,
-    y_label: str = "Cumulative regret",
+    y_label: str = "Total regret",
     max_points: int = 1200,
     x_values: np.ndarray | None = None,
-    x_label: str = "Timestep",
+    x_label: str = "Rounds",
     show_all_x_ticks: bool = False,
     include_x_origin: bool = True,
+    double_column: bool = False,
 ) -> None:
     """Write a standalone PGFPlots version of a bootstrap regret plot."""
     if not regrets_by_label:
@@ -280,9 +313,48 @@ def save_tikz_regret_plot(
     y_bottom, y_top = _limits_including_origin(y_min, y_max)
     x_left, x_right = _x_limits(plot_x, include_x_origin)
 
+    if double_column:
+        document_class = r"\documentclass[12pt]{article}"
+        geometry = (
+            r"\usepackage[paperwidth=7in,paperheight=4.05in,"
+            r"margin=0.08in]{geometry}"
+        )
+        axis_dimensions = r"width=6.35in,height=3.85in,"
+        label_style = (
+            r"label style={font=\fontsize{17}{19}\selectfont},"
+        )
+        tick_style = (
+            r"tick label style={font=\fontsize{15}{17}\selectfont},"
+        )
+        legend_style = (
+            r"legend style={font=\fontsize{14}{16}\selectfont},"
+        )
+        plot_weight = "thick"
+        mark_size = "3.5pt"
+        mark_line_width = "0.9pt"
+    else:
+        document_class = r"\documentclass[10pt]{article}"
+        geometry = (
+            r"\usepackage[paperwidth=3.5in,paperheight=2.45in,"
+            r"margin=0.04in]{geometry}"
+        )
+        axis_dimensions = r"width=3.25in,height=2.5in,"
+        label_style = (
+            r"label style={font=\fontsize{7}{8}\selectfont},"
+        )
+        tick_style = (
+            r"tick label style={font=\fontsize{6}{7}\selectfont},"
+        )
+        legend_style = (
+            r"legend style={font=\fontsize{6}{7}\selectfont},"
+        )
+        plot_weight = "semithick"
+        mark_size = "1.5pt"
+        mark_line_width = "0.5pt"
+
     lines = [
-        r"\documentclass{article}",
-        r"\usepackage[paperwidth=7in,paperheight=5in,margin=0.15in]{geometry}",
+        document_class,
+        geometry,
         r"\usepackage{pgfplots}",
         r"\usepgfplotslibrary{fillbetween}",
         r"\pgfplotsset{compat=1.18}",
@@ -295,9 +367,10 @@ def save_tikz_regret_plot(
         [
             r"\pagestyle{empty}",
             r"\begin{document}",
+            r"\enlargethispage{1in}",
             r"\noindent\begin{tikzpicture}",
             r"\begin{axis}[",
-            r"width=6.2in,height=4.15in,",
+            axis_dimensions,
             rf"xlabel={{{_tex_escape(x_label)}}},",
             rf"ylabel={{{_tex_escape(y_label)}}},",
             rf"xmin={x_left:.10g},",
@@ -308,6 +381,13 @@ def save_tikz_regret_plot(
             r"enlarge y limits=false,",
             r"legend pos=north west,",
             r"legend cell align={left},",
+            label_style,
+            (
+                r"xlabel style={at={(axis description cs:0.5,-0.1)},"
+                r"anchor=north},"
+            ),
+            tick_style,
+            legend_style,
             r"axis lines=box,",
             r"tick align=outside,",
         ]
@@ -326,7 +406,7 @@ def save_tikz_regret_plot(
                 rf"\addplot[name path={upper_path},draw=none,forget plot] coordinates {{{_tikz_coordinates(plot_x, upper[indices])}}};",
                 rf"\addplot[name path={lower_path},draw=none,forget plot] coordinates {{{_tikz_coordinates(plot_x, lower[indices])}}};",
                 rf"\addplot[fill={color},fill opacity=0.2,draw=none,forget plot] fill between[of={upper_path} and {lower_path}];",
-                rf"\addplot[color={color},thick,mark={marker},mark repeat={marker_stride},mark options={{fill=white,solid}},mark size=3pt] coordinates {{{_tikz_coordinates(plot_x, mean[indices])}}};",
+                rf"\addplot[color={color},{plot_weight},mark={marker},mark repeat={marker_stride},mark options={{fill=white,solid,line width={mark_line_width}}},mark size={mark_size}] coordinates {{{_tikz_coordinates(plot_x, mean[indices])}}};",
                 rf"\addlegendentry{{{_tex_escape(label)}}}",
             ]
         )

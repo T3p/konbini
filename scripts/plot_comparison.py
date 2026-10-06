@@ -11,6 +11,7 @@ from comparison_config import (
     ALGORITHM_LABELS,
     INSTANCE_NAMES,
     PLOT_LABELS,
+    PLOT_OUTPUT_STEMS,
     RESULTS_DIR,
     csv_path,
 )
@@ -32,6 +33,7 @@ def plot_instance(
     file_stem = instance if output_stem is None else output_stem
     regrets_by_label = {}
     x_values = None
+    arm_counts = None
     for algorithm in ALGORITHM_LABELS:
         result_path = csv_path(output_dir, file_stem, algorithm)
         if not result_path.is_file():
@@ -43,29 +45,56 @@ def plot_instance(
             ndmin=2,
         )
         if by_action_size:
+            header = result_path.read_text(encoding="utf-8").splitlines()[0]
+            if header.split(",")[:2] != ["action_size", "n_arms"]:
+                raise ValueError(
+                    f"{result_path.name} predates the fixed-arm experiment; "
+                    "regenerate the action-size logs"
+                )
             current_x_values = table[:, 0]
+            current_arm_counts = table[:, 1]
             if x_values is None:
                 x_values = current_x_values
+                arm_counts = current_arm_counts
             elif not np.array_equal(x_values, current_x_values):
                 raise ValueError(
                     "action sizes must match across algorithm CSV files"
                 )
-        regrets_by_label[PLOT_LABELS[algorithm]] = table[:, 1:]
+            elif not np.array_equal(arm_counts, current_arm_counts):
+                raise ValueError(
+                    "arm counts must match across algorithm CSV files"
+                )
+            if (
+                np.any(~np.isfinite(current_arm_counts))
+                or np.any(current_arm_counts <= 0)
+                or np.any(current_arm_counts != np.floor(current_arm_counts))
+            ):
+                raise ValueError(
+                    "arm counts must be positive integers"
+                )
+            regrets = table[:, 2:]
+        else:
+            regrets = table[:, 1:]
+        regrets_by_label[PLOT_LABELS[algorithm]] = regrets
     if not regrets_by_label:
         raise FileNotFoundError(
             f"no regret CSV files found in {output_dir}"
         )
 
     y_label = (
-        "Final cumulative regret"
+        "Final total regret"
         if by_action_size
         else (
-            "Cumulative blockwise regret"
+            "Total blockwise regret"
             if instance == "geometric_blocks"
-            else "Cumulative regret"
+            else "Total regret"
         )
     )
-    plot_path = output_dir / f"{file_stem}_regret.png"
+    double_column = instance == "correlated"
+    plot_output_stem = PLOT_OUTPUT_STEMS.get(
+        file_stem, f"{file_stem}_regret"
+    )
+    plot_path = output_dir / f"{plot_output_stem}.png"
     save_bootstrap_regret_plot(
         regrets_by_label,
         plot_path,
@@ -74,11 +103,12 @@ def plot_instance(
         bootstrap_seed=bootstrap_seed,
         y_label=y_label,
         x_values=x_values,
-        x_label="Action size" if by_action_size else "Timestep",
+        x_label="Action size" if by_action_size else "Rounds",
         show_all_x_ticks=by_action_size,
         include_x_origin=not by_action_size,
+        double_column=double_column,
     )
-    tex_path = output_dir / f"{file_stem}_regret.tex"
+    tex_path = output_dir / f"{plot_output_stem}.tex"
     save_tikz_regret_plot(
         regrets_by_label,
         tex_path,
@@ -87,9 +117,10 @@ def plot_instance(
         bootstrap_seed=bootstrap_seed,
         y_label=y_label,
         x_values=x_values,
-        x_label="Action size" if by_action_size else "Timestep",
+        x_label="Action size" if by_action_size else "Rounds",
         show_all_x_ticks=by_action_size,
         include_x_origin=not by_action_size,
+        double_column=double_column,
     )
     pdf_path = _compile_tikz(tex_path)
     return plot_path, tex_path, pdf_path
@@ -169,21 +200,50 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    plotted_instances = 0
+    plot_jobs = []
     for instance in args.instances:
         output_stem = instance
         if args.m:
             output_stem += "_by_action_size"
         if args.full:
             output_stem += "_full"
+        plot_jobs.append(
+            (
+                instance,
+                output_stem,
+                args.m,
+                0.99 if args.full else args.confidence_level,
+            )
+        )
+    if (
+        not args.full
+        and not args.m
+        and "stationary_good_arms" in args.instances
+    ):
+        plot_jobs.append(
+            (
+                "stationary_good_arms",
+                "stationary_good_arms_full",
+                False,
+                0.99,
+            )
+        )
+
+    plotted_instances = 0
+    for (
+        instance,
+        output_stem,
+        by_action_size,
+        confidence_level,
+    ) in plot_jobs:
         try:
             png_path, tex_path, pdf_path = plot_instance(
                 instance,
                 args.output_dir,
                 output_stem=output_stem,
-                by_action_size=args.m,
+                by_action_size=by_action_size,
                 n_bootstrap=args.bootstrap_samples,
-                confidence_level=args.confidence_level,
+                confidence_level=confidence_level,
                 bootstrap_seed=args.bootstrap_seed,
             )
         except FileNotFoundError as error:

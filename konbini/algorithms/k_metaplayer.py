@@ -146,10 +146,15 @@ def _inclusion_marginals(
             log_weights[arm] + log_without_arm - log_partition
         )
 
+    roundoff_tolerance = 1e-9
     if (not np.all(np.isfinite(marginals))
-            or np.any(marginals < 0)
-            or np.any(marginals > 1 + 1e-12)
-            or not np.isclose(marginals.sum(), action_size, atol=1e-10)):
+            or np.any(marginals < -roundoff_tolerance)
+            or np.any(marginals > 1.0 + roundoff_tolerance)):
+        raise FloatingPointError("invalid inclusion marginals")
+    marginals = np.clip(marginals, 0.0, 1.0)
+    if not np.isclose(
+        marginals.sum(), action_size, atol=roundoff_tolerance, rtol=0.0
+    ):
         raise FloatingPointError("invalid inclusion marginals")
     return marginals
 
