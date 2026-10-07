@@ -12,6 +12,7 @@ from comparison_config import (
     INSTANCE_NAMES,
     PLOT_LABELS,
     PLOT_OUTPUT_STEMS,
+    PLOTS_DIR,
     RESULTS_DIR,
     csv_path,
 )
@@ -26,6 +27,12 @@ def plot_instance(
     n_bootstrap: int = 2000,
     confidence_level: float = 0.95,
     bootstrap_seed: int = 0,
+    plot_dir: Path | None = None,
+    plot_stem: str | None = None,
+    publication_style: str | None = None,
+    axis_width: float | None = None,
+    axis_height: float | None = None,
+    write_png: bool = True,
 ) -> tuple[Path, Path, Path]:
     """Rebuild one instance plot from its saved CSV files."""
     if instance not in INSTANCE_NAMES:
@@ -90,25 +97,34 @@ def plot_instance(
             else "Total regret"
         )
     )
-    double_column = instance == "correlated"
-    plot_output_stem = PLOT_OUTPUT_STEMS.get(
+    plot_output_stem = plot_stem or PLOT_OUTPUT_STEMS.get(
         file_stem, f"{file_stem}_regret"
     )
-    plot_path = output_dir / f"{plot_output_stem}.png"
-    save_bootstrap_regret_plot(
-        regrets_by_label,
-        plot_path,
-        n_bootstrap=n_bootstrap,
-        confidence_level=confidence_level,
-        bootstrap_seed=bootstrap_seed,
-        y_label=y_label,
-        x_values=x_values,
-        x_label="Action size" if by_action_size else "Rounds",
-        show_all_x_ticks=by_action_size,
-        include_x_origin=not by_action_size,
-        double_column=double_column,
-    )
-    tex_path = output_dir / f"{plot_output_stem}.tex"
+    destination = output_dir if plot_dir is None else plot_dir
+    if publication_style is None:
+        publication_style = (
+            "main"
+            if plot_output_stem
+            in {"correlated", "action_size", "corrupted_main",
+                "correlated_full_regret"}
+            else "appendix"
+        )
+    plot_path = destination / f"{plot_output_stem}.png"
+    if write_png:
+        save_bootstrap_regret_plot(
+            regrets_by_label,
+            plot_path,
+            n_bootstrap=n_bootstrap,
+            confidence_level=confidence_level,
+            bootstrap_seed=bootstrap_seed,
+            y_label=y_label,
+            x_values=x_values,
+            x_label="Action size" if by_action_size else "Rounds",
+            show_all_x_ticks=by_action_size,
+            include_x_origin=not by_action_size,
+            double_column=publication_style == "appendix",
+        )
+    tex_path = destination / f"{plot_output_stem}.tex"
     save_tikz_regret_plot(
         regrets_by_label,
         tex_path,
@@ -120,39 +136,26 @@ def plot_instance(
         x_label="Action size" if by_action_size else "Rounds",
         show_all_x_ticks=by_action_size,
         include_x_origin=not by_action_size,
-        double_column=double_column,
+        publication_style=publication_style,
+        axis_width=axis_width,
+        axis_height=axis_height,
+        marker_repeat=1 if by_action_size else 100,
     )
     pdf_path = _compile_tikz(tex_path)
     return plot_path, tex_path, pdf_path
 
 
 def _compile_tikz(tex_path: Path) -> Path:
-    user_tectonic = Path.home() / ".local" / "bin" / "tectonic"
-    compiler = (
-        shutil.which("pdflatex")
-        or shutil.which("lualatex")
-        or shutil.which("tectonic")
-        or (str(user_tectonic) if user_tectonic.is_file() else None)
-    )
+    compiler = shutil.which("pdflatex")
     if compiler is None:
-        raise RuntimeError(
-            "a TeX compiler is required; install pdflatex, lualatex, or tectonic"
-        )
-    if Path(compiler).name == "tectonic":
-        command = [
-            compiler,
-            "--outdir",
-            str(tex_path.parent),
-            str(tex_path),
-        ]
-    else:
-        command = [
-            compiler,
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            f"-output-directory={tex_path.parent}",
-            str(tex_path),
-        ]
+        raise RuntimeError("pdflatex is required to compile publication plots")
+    command = [
+        compiler,
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        f"-output-directory={tex_path.parent}",
+        str(tex_path),
+    ]
     completed = subprocess.run(
         command,
         check=False,
@@ -169,6 +172,85 @@ def _compile_tikz(tex_path: Path) -> Path:
     return tex_path.with_suffix(".pdf")
 
 
+PUBLICATION_PLOTS = (
+    ("correlated", "correlated", "correlated", False, "main", 0.95),
+    (
+        "correlated", "correlated_by_action_size", "action_size",
+        True, "main", 0.95,
+    ),
+    (
+        "corrupted_stationary_good_arms",
+        "corrupted_stationary_good_arms",
+        "corrupted_main", False, "main", 0.95,
+    ),
+    ("correlated", "correlated_full", "full", False, "appendix", 0.99),
+    (
+        "stationary_good_arms", "stationary_good_arms", "uniform",
+        False, "appendix", 0.95,
+    ),
+    (
+        "corrupted_stationary_good_arms",
+        "corrupted_stationary_good_arms",
+        "corrupted", False, "appendix", 0.95,
+    ),
+    (
+        "geometric_blocks", "geometric_blocks", "blocks",
+        False, "appendix", 0.95,
+    ),
+    ("bernoulli", "bernoulli", "bernoulli", False, "appendix", 0.95),
+)
+
+PUBLICATION_AXIS_DIMENSIONS = {
+    "correlated": (2.5006, 1.6491),
+    "action_size": (2.5213, 1.6506),
+    "corrupted_main": (2.6182, 1.5377),
+    "full": (5.9843, 2.9402),
+    "uniform": (5.9843, 2.9402),
+    "corrupted": (6.1123, 2.7769),
+    "blocks": (6.1123, 2.7769),
+    "bernoulli": (6.1123, 2.7769),
+    "correlated_full_regret": (2.5006, 1.6491),
+}
+
+
+def build_publication_plots(
+    data_dir: Path = RESULTS_DIR,
+    plot_dir: Path = PLOTS_DIR,
+    n_bootstrap: int = 2000,
+    bootstrap_seed: int = 0,
+    include_correlated_full_regret: bool = False,
+) -> list[tuple[Path, Path]]:
+    """Build the paper and appendix plots from the saved experiment CSVs."""
+    jobs = list(PUBLICATION_PLOTS)
+    if include_correlated_full_regret:
+        jobs.append(
+            (
+                "correlated", "correlated_full", "correlated_full_regret",
+                False, "main", 0.99,
+            )
+        )
+    artifacts = []
+    for instance, data_stem, plot_stem, by_action_size, style, level in jobs:
+        axis_width, axis_height = PUBLICATION_AXIS_DIMENSIONS[plot_stem]
+        _, tex_path, pdf_path = plot_instance(
+            instance,
+            data_dir,
+            output_stem=data_stem,
+            by_action_size=by_action_size,
+            n_bootstrap=n_bootstrap,
+            confidence_level=level,
+            bootstrap_seed=bootstrap_seed,
+            plot_dir=plot_dir,
+            plot_stem=plot_stem,
+            publication_style=style,
+            axis_width=axis_width,
+            axis_height=axis_height,
+            write_png=False,
+        )
+        artifacts.append((tex_path, pdf_path))
+    return artifacts
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Rebuild comparison plots from existing CSV files."
@@ -177,10 +259,13 @@ def parse_args() -> argparse.Namespace:
         "--instances",
         nargs="+",
         choices=INSTANCE_NAMES,
-        default=list(INSTANCE_NAMES),
+        default=None,
     )
     parser.add_argument(
-        "--output-dir", type=Path, default=RESULTS_DIR
+        "--data-dir", type=Path, default=RESULTS_DIR
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=PLOTS_DIR
     )
     parser.add_argument("--bootstrap-samples", type=int, default=2000)
     parser.add_argument("--confidence-level", type=float, default=0.95)
@@ -195,11 +280,28 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="rebuild action-size comparison plots",
     )
+    parser.add_argument(
+        "--correlated-full-regret",
+        action="store_true",
+        help="also build the separate main-paper correlated_full_regret plot",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.instances is None:
+        artifacts = build_publication_plots(
+            args.data_dir,
+            args.output_dir,
+            n_bootstrap=args.bootstrap_samples,
+            bootstrap_seed=args.bootstrap_seed,
+            include_correlated_full_regret=args.correlated_full_regret,
+        )
+        for tex_path, pdf_path in artifacts:
+            print(f"TikZ plot: {tex_path}")
+            print(f"PDF plot: {pdf_path}")
+        return
     plot_jobs = []
     for instance in args.instances:
         output_stem = instance
@@ -239,12 +341,13 @@ def main() -> None:
         try:
             png_path, tex_path, pdf_path = plot_instance(
                 instance,
-                args.output_dir,
+                args.data_dir,
                 output_stem=output_stem,
                 by_action_size=by_action_size,
                 n_bootstrap=args.bootstrap_samples,
                 confidence_level=confidence_level,
                 bootstrap_seed=args.bootstrap_seed,
+                plot_dir=args.output_dir,
             )
         except FileNotFoundError as error:
             print(f"{instance}: skipped ({error})")

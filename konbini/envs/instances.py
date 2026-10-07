@@ -7,8 +7,8 @@ from math import comb
 import numpy as np
 
 DEFAULT_N_BLOCKS = 4
-DEFAULT_CORRELATED_N_GOOD_ARMS = 8
-DEFAULT_BERNOULLI_N_GOOD_ARMS = 8
+DEFAULT_CORRELATED_N_GOOD_ARMS = 4
+DEFAULT_BERNOULLI_N_GOOD_ARMS = 4
 
 
 def _validate_parameters(

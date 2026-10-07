@@ -3,6 +3,7 @@
 from pathlib import Path
 
 RESULTS_DIR = Path(__file__).parent / "results"
+PLOTS_DIR = Path(__file__).parent.parent / "plots"
 
 ALGORITHM_LABELS = ("OSMA", "OSMA-W", "EXP2", "K-Metaplayer")
 CSV_FILENAMES = {
@@ -28,13 +29,14 @@ PLOT_OUTPUT_STEMS = {
     "bernoulli": "bernoulli",
     "correlated_by_action_size": "action_size",
     "correlated": "correlated",
+    "correlated_full": "full",
     "corrupted_stationary_good_arms_by_action_size": (
         "action_size_corrupted"
     ),
     "corrupted_stationary_good_arms": "corrupted",
     "geometric_blocks": "blocks",
     "stationary_good_arms_by_action_size": "action_size_uniform",
-    "stationary_good_arms_full": "full",
+    "stationary_good_arms_full": "uniform_full",
     "stationary_good_arms": "uniform",
 }
 

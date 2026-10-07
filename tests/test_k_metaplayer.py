@@ -1,6 +1,8 @@
+import importlib
 import unittest
 from itertools import combinations
 from math import comb, log
+from unittest.mock import patch
 
 import numpy as np
 
@@ -123,7 +125,7 @@ class TestKMetaplayer(unittest.TestCase):
         self.assertTrue(np.all(samples.sum(axis=1) == action_size))
         np.testing.assert_allclose(samples.mean(axis=0), marginals, atol=0.012)
 
-    def test_reward_estimator_is_unbiased(self):
+    def test_loss_estimator_is_unbiased(self):
         log_weights = np.array([-0.3, 0.4, 0.9, -0.1])
         action_size = 2
         prefix, suffix = _log_elementary_tables(log_weights, action_size)
@@ -135,15 +137,15 @@ class TestKMetaplayer(unittest.TestCase):
 
         for arm in range(4):
             observation_probability = marginals[arm] / action_size
-            estimate = action_size * rewards[arm] / marginals[arm]
+            estimate = action_size * (1.0 - rewards[arm]) / marginals[arm]
             expectation[arm] = observation_probability * estimate
 
-        np.testing.assert_allclose(expectation, rewards, atol=1e-15)
+        np.testing.assert_allclose(expectation, 1.0 - rewards, atol=1e-15)
 
-    def test_positive_update_favors_subsets_containing_observed_arm(self):
+    def test_loss_update_penalizes_subsets_containing_observed_arm(self):
         before_subsets, before = exact_distribution(np.zeros(4), 2)
         updated = np.zeros(4)
-        updated[1] += 0.5
+        updated[1] -= 0.5
         after_subsets, after = exact_distribution(updated, 2)
         self.assertEqual(before_subsets, after_subsets)
 
@@ -151,9 +153,31 @@ class TestKMetaplayer(unittest.TestCase):
             before_subsets, before, after
         ):
             if 1 in subset:
-                self.assertGreater(new_probability, old_probability)
-            else:
                 self.assertLess(new_probability, old_probability)
+            else:
+                self.assertGreater(new_probability, old_probability)
+
+    def test_algorithm_applies_negative_estimated_loss_update(self):
+        module = importlib.import_module("konbini.algorithms.k_metaplayer")
+        environment = RecordingMultiplayerMab(
+            4, 2, np.zeros((2, 4), dtype=float)
+        )
+        action = np.array([1, 1, 0, 0], dtype=np.int8)
+        sampled_log_weights = []
+
+        def record_weights(log_weights, action_size, suffix, rng):
+            sampled_log_weights.append(log_weights.copy())
+            return action.copy()
+
+        with patch.object(module, "_sample_subset", side_effect=record_weights):
+            module.k_metaplayer(environment, eta=0.25, seed=7)
+
+        observed_arm = environment.winners[0]
+        self.assertLess(sampled_log_weights[1][observed_arm], 0.0)
+        np.testing.assert_array_equal(
+            np.delete(sampled_log_weights[1], observed_arm),
+            np.zeros(3),
+        )
 
     def test_seeded_gymnasium_run_is_reproducible(self):
         rewards = np.random.default_rng(2).random((100, 5))

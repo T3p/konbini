@@ -15,8 +15,7 @@ class TestOSMAW(unittest.TestCase):
         horizon = 20
         expected_rate = min(
             np.sqrt(
-                action_size * np.log(n_arms / action_size)
-                / (2 * n_arms * horizon)
+                np.log(n_arms / action_size) / (2 * n_arms * horizon)
             ),
             (3 - np.e) / n_arms,
         )

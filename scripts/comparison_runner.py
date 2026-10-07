@@ -77,6 +77,7 @@ def run_experiment(
     blockwise_n_blocks: int | None = None,
     independent_rewards: bool = False,
     output_stem: str | None = None,
+    generate_plot: bool = True,
 ) -> None:
     """Run all algorithms on one reward instance and save their regrets."""
     block_sizes = (
@@ -150,13 +151,15 @@ def run_experiment(
         save_regret_csv(regrets, algorithm_seeds, output_path)
         print(f"{label} regret CSV: {output_path}")
 
-    from plot_comparison import plot_instance
+    plot_paths = None
+    if generate_plot:
+        from plot_comparison import plot_instance
 
-    png_path, tex_path, pdf_path = plot_instance(
-        instance,
-        args.output_dir,
-        output_stem=file_stem,
-    )
+        plot_paths = plot_instance(
+            instance,
+            args.output_dir,
+            output_stem=file_stem,
+        )
     if blockwise_n_blocks is not None:
         print("comparator: best fixed subset within each block")
     elif independent_rewards:
@@ -169,9 +172,11 @@ def run_experiment(
         )
     for label, regrets in regrets_by_label.items():
         print(f"{label} mean final regret: {regrets[-1].mean():.4f}")
-    print(f"PNG plot: {png_path}")
-    print(f"TikZ plot: {tex_path}")
-    print(f"PDF plot: {pdf_path}")
+    if plot_paths is not None:
+        png_path, tex_path, pdf_path = plot_paths
+        print(f"PNG plot: {png_path}")
+        print(f"TikZ plot: {tex_path}")
+        print(f"PDF plot: {pdf_path}")
 
 
 def run_action_size_experiment(
@@ -183,6 +188,7 @@ def run_action_size_experiment(
     blockwise_n_blocks: int | None = None,
     independent_rewards: bool = False,
     output_stem: str | None = None,
+    generate_plot: bool = True,
 ) -> None:
     """Compare final regret across action sizes with a fixed arm count."""
     if (
@@ -277,14 +283,16 @@ def run_action_size_experiment(
         )
         print(f"{label} final-regret CSV: {output_path}")
 
-    from plot_comparison import plot_instance
+    plot_paths = None
+    if generate_plot:
+        from plot_comparison import plot_instance
 
-    png_path, tex_path, pdf_path = plot_instance(
-        instance,
-        args.output_dir,
-        output_stem=file_stem,
-        by_action_size=True,
-    )
+        plot_paths = plot_instance(
+            instance,
+            args.output_dir,
+            output_stem=file_stem,
+            by_action_size=True,
+        )
     comparator = (
         "best fixed subset within each block"
         if blockwise_n_blocks is not None
@@ -299,9 +307,11 @@ def run_action_size_experiment(
             )
         )
         print(f"{label} mean final regret: {values}")
-    print(f"PNG plot: {png_path}")
-    print(f"TikZ plot: {tex_path}")
-    print(f"PDF plot: {pdf_path}")
+    if plot_paths is not None:
+        png_path, tex_path, pdf_path = plot_paths
+        print(f"PNG plot: {png_path}")
+        print(f"TikZ plot: {tex_path}")
+        print(f"PDF plot: {pdf_path}")
 
 
 def _save_action_size_regret_csv(

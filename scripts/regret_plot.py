@@ -275,6 +275,10 @@ def save_tikz_regret_plot(
     show_all_x_ticks: bool = False,
     include_x_origin: bool = True,
     double_column: bool = False,
+    publication_style: str | None = None,
+    axis_width: float | None = None,
+    axis_height: float | None = None,
+    marker_repeat: int | None = None,
 ) -> None:
     """Write a standalone PGFPlots version of a bootstrap regret plot."""
     if not regrets_by_label:
@@ -298,7 +302,14 @@ def save_tikz_regret_plot(
         (214, 39, 40),
     )
     markers = ("*", "square*", "triangle*", "diamond*")
-    marker_stride = max(1, int(np.ceil(len(indices) / 12)))
+    if publication_style is None:
+        publication_style = "appendix" if double_column else "main"
+    if publication_style not in {"main", "appendix"}:
+        raise ValueError("publication_style must be 'main' or 'appendix'")
+    if marker_repeat is None:
+        marker_repeat = 1 if show_all_x_ticks else 100
+    if marker_repeat < 1:
+        raise ValueError("marker_repeat must be positive")
     series = []
     y_min = np.inf
     y_max = -np.inf
@@ -313,48 +324,29 @@ def save_tikz_regret_plot(
     y_bottom, y_top = _limits_including_origin(y_min, y_max)
     x_left, x_right = _x_limits(plot_x, include_x_origin)
 
-    if double_column:
-        document_class = r"\documentclass[12pt]{article}"
-        geometry = (
-            r"\usepackage[paperwidth=7in,paperheight=4.05in,"
-            r"margin=0.08in]{geometry}"
-        )
-        axis_dimensions = r"width=6.35in,height=3.85in,"
-        label_style = (
-            r"label style={font=\fontsize{17}{19}\selectfont},"
-        )
-        tick_style = (
-            r"tick label style={font=\fontsize{15}{17}\selectfont},"
-        )
-        legend_style = (
-            r"legend style={font=\fontsize{14}{16}\selectfont},"
-        )
-        plot_weight = "thick"
-        mark_size = "3.5pt"
-        mark_line_width = "0.9pt"
+    if publication_style == "appendix":
+        default_axis_width, default_axis_height = 6.05, 2.82
+        label_font = r"\fontsize{10}{12}\selectfont"
+        tick_font = r"\fontsize{9}{11}\selectfont"
+        legend_font = r"\fontsize{9}{11}\selectfont"
+        curve_line_width = "1pt"
+        mark_size = "2pt"
     else:
-        document_class = r"\documentclass[10pt]{article}"
-        geometry = (
-            r"\usepackage[paperwidth=3.5in,paperheight=2.45in,"
-            r"margin=0.04in]{geometry}"
-        )
-        axis_dimensions = r"width=3.25in,height=2.5in,"
-        label_style = (
-            r"label style={font=\fontsize{7}{8}\selectfont},"
-        )
-        tick_style = (
-            r"tick label style={font=\fontsize{6}{7}\selectfont},"
-        )
-        legend_style = (
-            r"legend style={font=\fontsize{6}{7}\selectfont},"
-        )
-        plot_weight = "semithick"
-        mark_size = "1.5pt"
-        mark_line_width = "0.5pt"
+        default_axis_width, default_axis_height = 2.61, 1.55
+        label_font = r"\fontsize{9}{11}\selectfont"
+        tick_font = r"\fontsize{8}{10}\selectfont"
+        legend_font = r"\fontsize{7.5}{9}\selectfont"
+        curve_line_width = "0.85pt"
+        mark_size = "1.7pt"
+    if axis_width is None:
+        axis_width = default_axis_width
+    if axis_height is None:
+        axis_height = default_axis_height
+    if axis_width <= 0 or axis_height <= 0:
+        raise ValueError("axis dimensions must be positive")
 
     lines = [
-        document_class,
-        geometry,
+        r"\documentclass[tikz,border=2pt]{standalone}",
         r"\usepackage{pgfplots}",
         r"\usepgfplotslibrary{fillbetween}",
         r"\pgfplotsset{compat=1.18}",
@@ -365,12 +357,12 @@ def save_tikz_regret_plot(
         )
     lines.extend(
         [
-            r"\pagestyle{empty}",
             r"\begin{document}",
-            r"\enlargethispage{1in}",
-            r"\noindent\begin{tikzpicture}",
+            r"\begin{tikzpicture}",
             r"\begin{axis}[",
-            axis_dimensions,
+            r"scale only axis,",
+            rf"width={axis_width:.4f}in,",
+            rf"height={axis_height:.4f}in,",
             rf"xlabel={{{_tex_escape(x_label)}}},",
             rf"ylabel={{{_tex_escape(y_label)}}},",
             rf"xmin={x_left:.10g},",
@@ -381,15 +373,19 @@ def save_tikz_regret_plot(
             r"enlarge y limits=false,",
             r"legend pos=north west,",
             r"legend cell align={left},",
-            label_style,
+            rf"label style={{font={label_font}}},",
+            rf"tick label style={{font={tick_font}}},",
             (
-                r"xlabel style={at={(axis description cs:0.5,-0.1)},"
-                r"anchor=north},"
+                rf"legend style={{font={legend_font},draw=none,fill=white,"
+                r"fill opacity=0.9,text opacity=1,inner sep=2pt,row sep=-1pt},"
             ),
-            tick_style,
-            legend_style,
             r"axis lines=box,",
+            r"axis on top,",
+            r"axis line style={line width=0.4pt},",
             r"tick align=outside,",
+            r"tick style={line width=0.4pt},",
+            r"major tick length=2pt,",
+            r"grid=none,",
         ]
     )
     if show_all_x_ticks:
@@ -406,7 +402,7 @@ def save_tikz_regret_plot(
                 rf"\addplot[name path={upper_path},draw=none,forget plot] coordinates {{{_tikz_coordinates(plot_x, upper[indices])}}};",
                 rf"\addplot[name path={lower_path},draw=none,forget plot] coordinates {{{_tikz_coordinates(plot_x, lower[indices])}}};",
                 rf"\addplot[fill={color},fill opacity=0.2,draw=none,forget plot] fill between[of={upper_path} and {lower_path}];",
-                rf"\addplot[color={color},{plot_weight},mark={marker},mark repeat={marker_stride},mark options={{fill=white,solid,line width={mark_line_width}}},mark size={mark_size}] coordinates {{{_tikz_coordinates(plot_x, mean[indices])}}};",
+                rf"\addplot[color={color},line width={curve_line_width},mark={marker},mark repeat={marker_repeat},mark options={{fill=white,solid,line width=0.55pt}},mark size={mark_size}] coordinates {{{_tikz_coordinates(plot_x, mean[indices])}}};",
                 rf"\addlegendentry{{{_tex_escape(label)}}}",
             ]
         )

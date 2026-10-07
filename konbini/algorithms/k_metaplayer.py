@@ -1,9 +1,7 @@
-"""Centralized K-Metaplayer with direct reward updates.
+"""Centralized K-Metaplayer with importance-weighted loss updates.
 
-The paper analyzes negative loss updates. This module instead performs a
-positive reward update, so the paper's stated regret guarantee does not
-automatically transfer. Sampling and marginal computation take ``O(d * m)``
-time and memory per round and do not enumerate the subset action space.
+Sampling and marginal computation take ``O(d * m)`` time and memory per
+round and do not enumerate the subset action space.
 """
 
 from __future__ import annotations
@@ -31,7 +29,7 @@ def k_metaplayer(
     eta: float | None = None,
     seed: int | None = None,
 ) -> dict:
-    """Run the centralized direct-reward K-Metaplayer for one episode."""
+    """Run the centralized loss-based K-Metaplayer for one episode."""
     n_arms = environment.n_arms
     action_size = environment.action_size
     if action_size == n_arms:
@@ -72,10 +70,11 @@ def k_metaplayer(
         if not np.isfinite(denominator) or denominator <= 0:
             raise ZeroDivisionError("observed-arm marginal must be positive")
 
-        reward_estimate = action_size * float(observed.item()) / denominator
-        if not np.isfinite(reward_estimate):
-            raise FloatingPointError("reward estimate is not finite")
-        log_weights[observed_arm] += eta * reward_estimate
+        observed_loss = 1.0 - float(observed.item())
+        loss_estimate = action_size * observed_loss / denominator
+        if not np.isfinite(loss_estimate):
+            raise FloatingPointError("loss estimate is not finite")
+        log_weights[observed_arm] -= eta * loss_estimate
         if not np.all(np.isfinite(log_weights)):
             raise FloatingPointError("K-Metaplayer update overflowed")
         log_weights -= np.max(log_weights)
